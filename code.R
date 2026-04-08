@@ -1,5 +1,5 @@
 # =============================================================================
-# Analysis: Rerun FY 2024 NIH Indirect Cost Reimbursement w/ Proposed 15-Percent Cap
+# Analysis: Rerun FY 2024 NIH Indirect Cost Reimbursement w/ Proposed Cap
 # =============================================================================
 
 
@@ -8,62 +8,71 @@
 library(tidyverse)
 
 
+# -- Config / Algebra
 
-# -- Config
+setwd("~/GitHub/r-proposed-nih-indirect-cost-cap")
 
-CSV_PATH          <- "download/2025-01-28/RePORTER_PRJ_C_FY2024.csv"
+API_KEY        <- ""
+INPUT_FILE     <- "download/2025-01-28/RePORTER_PRJ_C_FY2024.csv"
+REFERENCE_FILE <- "reference/NIH_ADMINISTERING_IC.csv"
+OUTPUT_DIR     <- "output"
+CAP_RATE       <- 0.15
 
-working_directory <- "~/GitHub/nih-indirect-cost-r"
+
+# -- Shared Toolbox
+
+ensure_dir <- function(path) {
+  dir.create(path, showWarnings = FALSE, recursive = TRUE)
+  path
+}
+
+read_source_csv <- function(path, na_strings = c("", "NA")) {
+  read.csv(path, stringsAsFactors = FALSE, na.strings = na_strings)
+}
+
+write_output_csv <- function(df, path) {
+  ensure_dir(dirname(path))
+  write.csv(df, path, row.names = FALSE)
+}
 
 
+# -- Reference Data
 
-ic_lookup        <- read.csv("reference/NIH_ADMINISTERING_IC.csv",
-                             stringsAsFactors = FALSE,
-                             na.strings       = c("", "NA"))
-
+ic_lookup        <- read_source_csv(REFERENCE_FILE)
 ic_supercode_map <- setNames(ic_lookup$superCode, ic_lookup$CODE)
-
-setwd(working_directory)
-
 
 
 # -- Read CSV
 
-df_raw <- read.csv(
-  CSV_PATH,
-  stringsAsFactors = FALSE,
-  na.strings        = c("", "NA")
-)
+df_raw <- read_source_csv(INPUT_FILE)
 
 
-
-# -- Add filtering columns
+# -- Filtering Columns
 
 df <- df_raw |>
   mutate(
-    
+
     DIRECT_COST_AMT   = as.numeric(DIRECT_COST_AMT),
-    
+
     INDIRECT_COST_AMT = as.numeric(INDIRECT_COST_AMT),
-    
-    PROPOSED_15PCT_CAP_INDIRECT_COST = DIRECT_COST_AMT * 0.15,
-    
+
+    PROPOSED_15PCT_CAP_INDIRECT_COST = DIRECT_COST_AMT * CAP_RATE,
+
     TRUE_FALSE_IS_INDIRECT_COST_LESS_THAN_CAP =
       !is.na(INDIRECT_COST_AMT) & (INDIRECT_COST_AMT > PROPOSED_15PCT_CAP_INDIRECT_COST),
-    
+
     IF_RERUN_FY24_INDIRECT_COST_WITH_15PCT_CAP_COST =
       pmin(INDIRECT_COST_AMT, PROPOSED_15PCT_CAP_INDIRECT_COST, na.rm = FALSE),
-    
+
     INDIRECT_COST_AMT_MORE_THAN_ZERO_DOLLARS =
       !is.na(INDIRECT_COST_AMT) & INDIRECT_COST_AMT > 0,
-    
+
     NIH_ADMINISTERING_IC = ic_supercode_map[ADMINISTERING_IC]
-    
+
   )
 
 
-
-# -- Apply pivot-table filters
+# -- Filters
 
 df_filtered <- df |>
   filter(
@@ -77,7 +86,6 @@ df_filtered <- df |>
       "SBIR/STTR CONTRACTS"
     )
   )
-
 
 
 # -- Group by ORG_NAME
@@ -96,9 +104,6 @@ datawrapper_table <- df_filtered |>
   arrange(desc(indirect_cost_total))
 
 
+# -- Output
 
-
-# -- Save outputs
-
-# Pivot summary (one row per institution) [Uncomment to write]
-#write.csv(datawrapper_table, "output/nih_indirect_fy2024_summary.csv", row.names = FALSE)
+#write_output_csv(datawrapper_table, file.path(OUTPUT_DIR, "nih_indirect_fy2024_summary.csv"))
